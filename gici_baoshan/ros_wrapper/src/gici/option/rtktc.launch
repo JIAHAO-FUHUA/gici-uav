@@ -1,0 +1,4 @@
+<launch>
+    <node name="gici" pkg="gici_ros" type="gici_ros_main" output="screen" args="/media/aae/tommy/code/gici/backup/20240121-rtk-ins-odom/ros_wrapper/src/gici/option/ros_real_time_estimation_RTK_TC_taipei.yaml"/> 
+
+</launch>

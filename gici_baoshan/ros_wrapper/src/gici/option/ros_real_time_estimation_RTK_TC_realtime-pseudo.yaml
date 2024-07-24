@@ -1,0 +1,215 @@
+# GICI offline pseudo-real-time RTK/IMU TC estimation with ROS topics as input and output
+stream:
+  streamers:
+    - streamer:
+        tag: str_ros_gnss_rov
+        type: ros
+        topic_name: /ublox_driver/ipnl/gnss_rover
+        io: input
+        format: gnss_raw
+        enable_observation: true
+    - streamer:
+        tag: str_ros_gnss_ref
+        type: ros
+        topic_name: /gici/gnss_reference
+        io: input
+        format: gnss_raw
+        enable_observation: true
+        enable_antenna_position: false
+    - streamer:
+        tag: str_ros_gnss_eph
+        type: ros
+        topic_name: /ublox_driver/ipnl/gnss_ephemeris
+        io: input
+        format: gnss_raw
+        enable_ephemeris: true
+        enable_ionosphere_parameter: false
+    # - streamer:
+    #     tag: str_dcb_file
+    #     output_tags: [fmt_dcb_file]
+    #     type: file
+        # path: <gici-root-directory>/option/CAS0MGXRAP_20221580000_01D_01D_DCB.BSX
+    #     enable_time_tag: false
+    - streamer:
+        tag: str_ros_imu
+        type: ros
+        topic_name: /imu/data
+        io: input
+        format: imu
+        # loop_duration: 0.01
+    - streamer:
+        tag: str_ros_odom
+        type: ros
+        topic_name: /odom
+        io: input
+        format: odometer
+        # loop_duration: 0.05
+    - streamer:
+        tag: str_tc_solution_file
+        input_tags: [fmt_tc_solution_file]
+        type: file
+        path:  /home/aae/rtk_tc_solution_ros_test20240625.txt
+        enable_time_tag: false
+    - streamer:
+        tag: str_solution
+        type: ros
+        topic_name: solution
+        queue_size: 5
+        io: output
+        format: pose_stamped
+    - streamer:
+        tag: str_solution_odometry
+        type: ros
+        topic_name: solution_odometry
+        queue_size: 10
+        io: output
+        format: odometry
+        subframe_id: Body
+    - streamer:
+        tag: str_solution_path
+        type: ros
+        topic_name: solution_path
+        queue_size: 100
+        io: output
+        format: path
+    - streamer:
+        tag: str_diagnostic
+        type: ros
+        topic_name: diagnostic
+        queue_size: 100
+        io: output
+        format: diagnostic
+  formators:
+    # - formator:
+    #     io: input
+    #     tag: fmt_dcb_file
+    #     type: dcb-file
+    - formator:
+        io: output
+        tag: fmt_tc_solution_file
+        type: nmea 
+        use_esa: true
+        talker_id: GP
+
+
+  replay:
+    enable: false
+
+estimate:
+- estimator:
+    tag: est_rtk_imu_tc
+    type: rtk_imu_tc
+    input_tags: [str_ros_gnss_rov, str_ros_gnss_ref, str_ros_gnss_eph,  str_ros_imu, str_ros_odom]
+    str_ros_gnss_rov_roles: [rover]
+    str_ros_gnss_ref_roles: [reference]
+    str_ros_gnss_eph_roles: [ephemeris]
+    # str_ros_gnss_eph_roles: [ephemeris]
+    # fmt_dcb_file_roles: [code_bias]
+    str_ros_imu_roles: [major]
+    str_ros_odom_roles: [skid]
+    output_tags: [fmt_tc_solution_file, str_solution, str_solution_odometry, str_solution_path,str_diagnostic]
+    output_align_tag: str_ros_imu
+    output_downsample_rate: 40
+    compute_covariance: false
+    is_post_process: false
+    use_base_position_cfile: true
+    # base_position_cfile: [-3026365.9421, 4926947.2200, 2683010.4241]     
+    # base_position_cfile: [ -3024808.0229,  4921746.8624,  2696033.3917 ]  # Taipei-2024
+    base_position_cfile: [  -2414266.9200,  5386768.9870,  2407460.0310]  # HKSC
+    enable_backend_data_sparsify: true
+    pending_num_threshold: 15
+ 
+    rtk_imu_tc_options:
+      max_window_length: 3
+    rtk_options:
+      max_window_length: 10
+      use_ambiguity_resolution: true
+      estimate_velocity: true
+      # max_age: 31
+    gnss_estimator_base_options:
+      use_outlier_rejection: true
+      reject_one_outlier_once: false
+      max_pesudorange_error: 10.0      
+      max_phaserange_error: 0.05      
+      max_doppler_error: 0.5
+      max_pesudorange_size: 80
+      max_satellite_size: 180
+      diverge_max_reject_ratio: 0.5
+      diverge_min_num_continuous_reject: 10
+      gnss_common:
+        min_elevation: 7.0           
+        min_SNR: [20.0, 15.0]
+        min_num_satellite_redundancy: 0
+        psr_dop_thres  : 20000.0 
+        delta_dop_thres: 20000.0
+        phr_dop_thres  : 10000.0 
+        psr_phr_thres  : 30000.0 
+      gnss_error_parameter: 
+        code_to_phase_ratio: 100
+        doppler_error_factor: 0.2
+        phase_error_factor: 0.003
+      #   relative_position: [0.09, 0.09, 0.09]
+      #   relative_velocity: [0.01, 0.01, 0.01]
+    imu_estimator_base_options:
+      imu_parameters:
+        sigma_bg:   2.5e-2  # 200 deg/hr
+        sigma_ba:   0.005     # 25 mg
+        sigma_g_c:  2.6700e-03 # 10 deg/hr*sqrt(Hz)
+        sigma_a_c:  0.0312    # 5 mg*sqrt(Hz)
+        sigma_gw_c: 2.0881e-06
+        sigma_aw_c: 2.7361e-04
+                
+        # sigma_bg:   1.0e-3  # 200 deg/hr
+        # sigma_ba:   0.01     # 50 mg
+        # sigma_g_c:  2.6700e-03 
+        # sigma_a_c:  0.0312
+        # sigma_gw_c: 2.0881e-06
+        # sigma_aw_c: 2.7361e-04
+      body_to_imu_rotation: [0.0, 0.0, 90.0]
+      body_to_imu_rotation_std: 5
+      car_motion: true
+      car_motion_min_velocity: 0.05      # m/s   vital for alignment
+      car_motion_max_anguler_velocity: 5  # deg/s vital for alignment
+      use_zupt: true
+      zupt_max_acc_std: 0.1
+      zupt_max_gyro_std: 0.05
+      zupt_max_gyro_median: 0.01
+    odom_estimator_base_options:
+      use_forward_velocity: true
+      forward_velocity_std: 0.1
+      forward_velocity_rw: 0.0
+      bearing_angular_velocity_std: 0.1
+      bearing_angular_velocity_rw: 0.0
+      estimate_frequency: 2
+      # imu_to_odom_leverarm: [0,-0.4805,-0.0726]
+      # scaler: [1,1]   # omega, v
+    estimator_base_options:
+      max_iteration: 2
+      num_threads: 4
+      max_solver_time: 0.01
+      verbose_output: true
+      solver_type: sparse_schur
+      trust_region_strategy_type: levenberg_marquardt
+    gnss_imu_initializer_options:
+      max_iteration: 5
+      num_threads: 4
+      max_solver_time: 0.01
+      gnss_extrinsics: [0.1, 0.1, 0.25]
+      gnss_extrinsics_initial_std: [0, 0, 0]
+      time_window_length_slow_motion: 0.05
+      time_window_length_dynamic_motion: 2.0
+      min_acceleration: 0.5   # m , minumum distance for initialization 
+    ambiguity_resolution_options:
+      min_elevation: 10.0
+      system_exclude: [R]
+      min_percentage_fixation_uwl: 1.0
+      min_percentage_fixation_wl: 0.7
+      min_percentage_fixation_nl: 0.4
+      min_num_satellite_pairs_fixation: 6
+      ratio: 2
+
+logging:
+  enable: true
+  min_log_level: 0
+  log_to_stderr: true 
+  file_directory: /home/aae
